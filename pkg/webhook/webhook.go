@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/client-go/rest"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/openai/openai-go/option"
 	"gopkg.in/yaml.v2"
 	admissionv1 "k8s.io/api/admission/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -77,6 +80,37 @@ func Mutate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getCRD(cr *unstructured.Unstructured) (*apiextensionsv1.CustomResourceDefinition, error) {
+	// Build the client configuration
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the API extensions client
+	apiExtensionsClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct the CRD name
+	// CRD names are in the format <plural>.<group>
+	group := cr.GroupVersionKind().Group
+	if err != nil {
+		return nil, err
+	}
+
+	crdName := fmt.Sprintf("%s.%s", cr.GetKind(), group)
+
+	// Get the CRD
+	crd, err := apiExtensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return crd, nil
+}
+
 func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := ar.Request
 
@@ -106,8 +140,14 @@ func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 	log.Printf("CR is invalid: %s", validationErrors)
 
+	crd, err := getCRD(cr)
+	if err != nil {
+		log.Printf("Failed to retrieve CRD: %v", err)
+		return toAdmissionResponse(err)
+	}
+
 	// Adjust the CR using OpenAI
-	adjustedCR, err := AdjustCRWithLLM(cr)
+	adjustedCR, err := AdjustCRWithLLM(cr, crd)
 	if err != nil {
 		log.Printf("Failed to adjust CR with LLM: %v", err)
 		return toAdmissionResponse(err)
@@ -145,21 +185,33 @@ func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	}
 }
 
-func AdjustCRWithLLM(cr *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomResourceDefinition) (*unstructured.Unstructured, error) {
 	// Convert CR to YAML
 	crYAML, err := yaml.Marshal(cr.Object)
 	if err != nil {
 		return nil, err
 	}
 
+	// Convert CRD to YAML
+	crdYAML, err := yaml.Marshal(crd)
+	if err != nil {
+		return nil, err
+	}
+
 	// Construct the prompt
-	prompt := fmt.Sprintf(`Given the following Kubernetes Custom Resource (CR) that may not conform to its Custom Resource Definition (CRD):
+	prompt := fmt.Sprintf(`You are an expert in Kubernetes custom resources. Given the following Custom Resource Definition (CRD):
 
 ---
 %s
 ---
 
-Please adjust the CR so that it conforms to its CRD schema. Return only the corrected CR in YAML format. Do not include any explanations.`, string(crYAML))
+And the following Custom Resource (CR) that may not conform to the CRD:
+
+---
+%s
+---
+
+Adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
 
 	// Initialize the OpenAI client
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
