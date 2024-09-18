@@ -15,7 +15,7 @@ deps:
 	go mod tidy
 
 test:
-	go test ./...
+	go test -v ./...
 
 clean:
 	rm -rf $(OUTPUT_DIR)

@@ -4,15 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openai/openai-go"
+	"github.com/wI2L/jsondiff"
 	"io"
-	"k8s.io/client-go/rest"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
-	"gopkg.in/yaml.v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -20,7 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/util/jsonmergepatch"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -28,6 +28,34 @@ var (
 	codecs       = serializer.NewCodecFactory(scheme)
 	deserializer = codecs.UniversalDeserializer()
 )
+
+// openaiClientInterface defines the methods used from the OpenAI client.
+type openaiClientInterface interface {
+	CreateChatCompletion(ctx context.Context, prompt string) (string, error)
+}
+
+// openAIClient is a wrapper around the OpenAI client.
+type openAIClient struct {
+	client *openai.Client
+}
+
+func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
+	chatCompletion, err := c.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		}),
+		Model: openai.F("gpt-4o"), // Use "gpt-3.5-turbo" if "gpt-4o" is not accessible
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if len(chatCompletion.Choices) == 0 {
+		return "", fmt.Errorf("no response from OpenAI")
+	}
+
+	return chatCompletion.Choices[0].Message.Content, nil
+}
 
 // Mutate handles the admission review requests
 func Mutate(w http.ResponseWriter, r *http.Request) {
@@ -57,8 +85,21 @@ func Mutate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Initialize the OpenAI client
+	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+	if openaiAPIKey == "" {
+		log.Printf("OPENAI_API_KEY environment variable not set")
+		http.Error(w, "OPENAI_API_KEY environment variable not set", http.StatusInternalServerError)
+		return
+	}
+	client := &openAIClient{
+		client: openai.NewClient(
+			option.WithAPIKey(openaiAPIKey),
+		),
+	}
+
 	// Process the AdmissionRequest
-	admissionResponse := mutate(&admissionReview)
+	admissionResponse := mutate(&admissionReview, client)
 
 	// Send response
 	admissionReview.Response = admissionResponse
@@ -80,38 +121,7 @@ func Mutate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getCRD(cr *unstructured.Unstructured) (*apiextensionsv1.CustomResourceDefinition, error) {
-	// Build the client configuration
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the API extensions client
-	apiExtensionsClient, err := apiextensionsclientset.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	// Construct the CRD name
-	// CRD names are in the format <plural>.<group>
-	group := cr.GroupVersionKind().Group
-	if err != nil {
-		return nil, err
-	}
-
-	crdName := fmt.Sprintf("%s.%s", cr.GetKind(), group)
-
-	// Get the CRD
-	crd, err := apiExtensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return crd, nil
-}
-
-func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
+func mutate(ar *admissionv1.AdmissionReview, client openaiClientInterface) *admissionv1.AdmissionResponse {
 	req := ar.Request
 
 	// Only process create and update operations
@@ -147,7 +157,7 @@ func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	}
 
 	// Adjust the CR using OpenAI
-	adjustedCR, err := AdjustCRWithLLM(cr, crd)
+	adjustedCR, err := AdjustCRWithLLM(cr, crd, client)
 	if err != nil {
 		log.Printf("Failed to adjust CR with LLM: %v", err)
 		return toAdmissionResponse(err)
@@ -185,7 +195,7 @@ func mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	}
 }
 
-func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomResourceDefinition) (*unstructured.Unstructured, error) {
+func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomResourceDefinition, client openaiClientInterface) (*unstructured.Unstructured, error) {
 	// Convert CR to YAML
 	crYAML, err := yaml.Marshal(cr.Object)
 	if err != nil {
@@ -211,66 +221,105 @@ And the following Custom Resource (CR) that may not conform to the CRD:
 %s
 ---
 
-Adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
+Please adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
 
-	// Initialize the OpenAI client
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-	if openaiAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
-	}
-	client := openai.NewClient(
-		option.WithAPIKey(openaiAPIKey),
-	)
-
-	// Create the ChatCompletion request
-	ctx := context.TODO()
-	chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage(prompt),
-		}),
-		Model: openai.F("gpt-4"), // Use "gpt-3.5-turbo" if "gpt-4" is not accessible
-	})
+	// Call the OpenAI client
+	adjustedCRYAML, err := client.CreateChatCompletion(context.TODO(), prompt)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(chatCompletion.Choices) == 0 {
-		return nil, fmt.Errorf("no response from OpenAI")
+	// Convert YAML to JSON
+	adjustedCRJSON, err := yaml.YAMLToJSON([]byte(adjustedCRYAML))
+	//debug
+	fmt.Printf("Adjusted CR JSON: %s\n", string(adjustedCRJSON))
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert adjusted CR YAML to JSON: %v", err)
 	}
 
-	adjustedCRYAML := chatCompletion.Choices[0].Message.Content
-
-	// Convert YAML back to unstructured.Unstructured
+	// Unmarshal JSON into unstructured.Unstructured
 	adjustedCR := &unstructured.Unstructured{}
-	err = yaml.Unmarshal([]byte(adjustedCRYAML), &adjustedCR.Object)
+	err = adjustedCR.UnmarshalJSON(adjustedCRJSON)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal adjusted CR JSON: %v", err)
 	}
 
 	return adjustedCR, nil
 }
 
 func ValidateCR(cr *unstructured.Unstructured) (bool, string) {
-	// Implement your validation logic here
-	// For demonstration, let's assume the CR must have 'spec' with 'requiredField'
+	// Example validation logic
 	spec, found, err := unstructured.NestedMap(cr.Object, "spec")
 	if err != nil || !found {
 		return false, "spec field is missing"
 	}
 
-	if _, exists := spec["requiredField"]; !exists {
-		return false, "requiredField is missing in spec"
+	// Add logging to check what's inside spec
+	fmt.Printf("Validating CR Spec: %+v\n", spec)
+
+	install, found, err := unstructured.NestedMap(spec, "install")
+	if err != nil || !found {
+		return false, "install field is missing"
+	}
+
+	// Validate install.namespace
+	_, found, err = unstructured.NestedString(install, "namespace")
+	if err != nil || !found {
+		return false, "namespace is missing in install"
+	}
+
+	// Validate install.serviceAccount
+	serviceAccount, found, err := unstructured.NestedMap(install, "serviceAccount")
+	if err != nil || !found {
+		return false, "serviceAccount is missing in install"
+	}
+
+	_, found, err = unstructured.NestedString(serviceAccount, "name")
+	if err != nil || !found {
+		return false, "serviceAccount name is missing"
+	}
+
+	// Validate source
+	source, found, err := unstructured.NestedMap(spec, "source")
+	if err != nil || !found {
+		return false, "source field is missing"
+	}
+
+	// Validate source.sourceType
+	_, found, err = unstructured.NestedString(source, "sourceType")
+	if err != nil || !found {
+		return false, "sourceType is missing in source"
+	}
+
+	// Validate source.catalog.packageName
+	catalog, found, err := unstructured.NestedMap(source, "catalog")
+	if err != nil || !found {
+		return false, "catalog is missing in source"
+	}
+
+	_, found, err = unstructured.NestedString(catalog, "packageName")
+	if err != nil || !found {
+		return false, "packageName is missing in catalog"
 	}
 
 	return true, ""
 }
 
 func createJSONPatch(originalJSON, modifiedJSON []byte) ([]byte, error) {
-	patch, err := jsonmergepatch.CreateThreeWayJSONMergePatch(originalJSON, modifiedJSON, originalJSON)
+	// Generate the JSON Patch
+	patch, err := jsondiff.CompareJSON(originalJSON, modifiedJSON)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create JSON Patch: %v", err)
 	}
-	return patch, nil
+
+	// Marshal the patch operations to JSON bytes
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON Patch: %v", err)
+	}
+
+	return patchBytes, nil
 }
 
 func toAdmissionResponse(err error) *admissionv1.AdmissionResponse {
@@ -280,4 +329,33 @@ func toAdmissionResponse(err error) *admissionv1.AdmissionResponse {
 			Message: err.Error(),
 		},
 	}
+}
+
+var getCRD = func(cr *unstructured.Unstructured) (*apiextensionsv1.CustomResourceDefinition, error) {
+	// Build the client configuration
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the API extensions client
+	apiExtensionsClient, err := apiextensionsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct the CRD name
+	group := cr.GroupVersionKind().Group
+	kind := cr.GetKind()
+	plural := fmt.Sprintf("%ss", kind) // Simple pluralization; adjust as needed
+
+	crdName := fmt.Sprintf("%s.%s", plural, group)
+
+	// Get the CRD
+	crd, err := apiExtensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return crd, nil
 }
