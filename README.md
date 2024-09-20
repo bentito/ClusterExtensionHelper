@@ -92,7 +92,7 @@ This CR is intentionally invalid because it is missing the required `packageName
 Apply the invalid CR to your cluster:
 
 ```bash
-kubectl apply -f invalid-cr.yaml
+kubectl apply -f invalid-cr.yaml --validate=false
 ```
 
 #### 5.3 Verify the Mutation
