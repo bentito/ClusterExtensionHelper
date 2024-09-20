@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"sigs.k8s.io/yaml"
+	"strings"
 )
 
 var (
@@ -200,16 +201,20 @@ func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomR
 	// Convert CR to YAML
 	crYAML, err := yaml.Marshal(cr.Object)
 	if err != nil {
+		log.Printf("Error marshalling CR to YAML: %v", err)
 		return nil, err
 	}
+	log.Printf("CR YAML:\n%s\n", string(crYAML))
 
 	// Convert CRD to YAML
 	crdYAML, err := yaml.Marshal(crd)
 	if err != nil {
+		log.Printf("Error marshalling CRD to YAML: %v", err)
 		return nil, err
 	}
+	log.Printf("CRD YAML:\n%s\n", string(crdYAML))
 
-	// Construct the prompt
+	// Construct the prompt to send to OpenAI
 	prompt := fmt.Sprintf(`You are an expert in Kubernetes custom resources. Given the following Custom Resource Definition (CRD):
 
 ---
@@ -224,25 +229,39 @@ And the following Custom Resource (CR) that may not conform to the CRD:
 
 Please adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
 
+	log.Printf("Generated OpenAI prompt:\n%s\n", prompt)
+
 	// Call the OpenAI client
 	adjustedCRYAML, err := client.CreateChatCompletion(context.TODO(), prompt)
 	if err != nil {
+		log.Printf("Error from OpenAI API: %v", err)
 		return nil, err
 	}
+	log.Printf("Raw Adjusted CR YAML from OpenAI:\n%s\n", adjustedCRYAML)
+
+	// Strip the ```yaml wrapper if present
+	adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
+	if strings.HasPrefix(adjustedCRYAML, "```yaml") && strings.HasSuffix(adjustedCRYAML, "```") {
+		adjustedCRYAML = strings.TrimPrefix(adjustedCRYAML, "```yaml")
+		adjustedCRYAML = strings.TrimSuffix(adjustedCRYAML, "```")
+		adjustedCRYAML = strings.TrimSpace(adjustedCRYAML) // Remove any extra whitespace
+	}
+	log.Printf("Adjusted CR YAML after removing wrapper:\n%s\n", adjustedCRYAML)
 
 	// Convert YAML to JSON
 	adjustedCRJSON, err := yaml.YAMLToJSON([]byte(adjustedCRYAML))
-	//debug
-	fmt.Printf("Adjusted CR JSON: %s\n", string(adjustedCRJSON))
-
 	if err != nil {
+		log.Printf("Failed to convert adjusted CR YAML to JSON: %v", err)
+		log.Printf("Raw adjusted CR YAML:\n%s\n", adjustedCRYAML) // Debug the YAML that failed
 		return nil, fmt.Errorf("failed to convert adjusted CR YAML to JSON: %v", err)
 	}
+	log.Printf("Adjusted CR JSON:\n%s\n", string(adjustedCRJSON))
 
 	// Unmarshal JSON into unstructured.Unstructured
 	adjustedCR := &unstructured.Unstructured{}
 	err = adjustedCR.UnmarshalJSON(adjustedCRJSON)
 	if err != nil {
+		log.Printf("Failed to unmarshal adjusted CR JSON: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal adjusted CR JSON: %v", err)
 	}
 
