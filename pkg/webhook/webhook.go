@@ -5,13 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/wI2L/jsondiff"
 	"io"
-	"log"
-	"net/http"
-	"os"
-
-	"github.com/openai/openai-go/option"
 	admissionv1 "k8s.io/api/admission/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -19,7 +15,12 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
+	"log"
+	"net/http"
+	"os"
 	"sigs.k8s.io/yaml"
 )
 
@@ -344,17 +345,38 @@ var getCRD = func(cr *unstructured.Unstructured) (*apiextensionsv1.CustomResourc
 		return nil, err
 	}
 
-	// Construct the CRD name
-	group := cr.GroupVersionKind().Group
-	kind := cr.GetKind()
-	plural := fmt.Sprintf("%ss", kind) // Simple pluralization; adjust as needed
+	// Create the discovery client
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discovery client: %v", err)
+	}
 
-	crdName := fmt.Sprintf("%s.%s", plural, group)
+	// Get the GroupVersionKind (GVK) of the resource
+	gvk := cr.GroupVersionKind()
+
+	// Get the preferred API resources
+	groupResources, err := restmapper.GetAPIGroupResources(discoveryClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get API group resources: %v", err)
+	}
+
+	// Build the REST mapper
+	mapper := restmapper.NewDiscoveryRESTMapper(groupResources)
+
+	// Map the GVK to a REST mapping
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to map GVK: %v", err)
+	}
+
+	// The name of the CRD is the plural form of the resource plus the group name
+	plural := mapping.Resource.Resource
+	crdName := fmt.Sprintf("%s.%s", plural, gvk.Group)
 
 	// Get the CRD
 	crd, err := apiExtensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(), crdName, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve CRD: %v", err)
 	}
 
 	return crd, nil

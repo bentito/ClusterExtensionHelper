@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Load TLS certificates (you need to generate these and mount them into the container)
-	cert, err := tls.LoadX509KeyPair("/tls/tls.crt", "/tls/tls.key")
+	cert, err := tls.LoadX509KeyPair("/certs/tls.crt", "/certs/tls.key")
 	if err != nil {
 		log.Fatalf("Failed to load key pair: %v", err)
 	}

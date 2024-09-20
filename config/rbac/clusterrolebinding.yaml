@@ -1,0 +1,13 @@
+# config/rbac/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webhook-clusterrolebinding
+subjects:
+  - kind: ServiceAccount
+    name: webhook-service-account
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: webhook-cluster-role
+  apiGroup: rbac.authorization.k8s.io

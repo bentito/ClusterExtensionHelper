@@ -1,0 +1,26 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: clusterextension-mutating-webhook
+webhooks:
+  - name: clusterextensionwebhook.operatorframework.io
+    rules:
+      - apiGroups:
+          - "olm.operatorframework.io"
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - clusterextensions
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: default
+        path: "/mutate"
+        port: 443
+      caBundle: "${CA_BUNDLE}"
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    timeoutSeconds: 10

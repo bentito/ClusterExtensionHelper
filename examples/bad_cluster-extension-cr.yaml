@@ -1,0 +1,13 @@
+apiVersion: olm.operatorframework.io/v1alpha1
+kind: ClusterExtension
+metadata:
+  name: test-extension
+spec:
+  install:
+    namespace: test-namespace
+    serviceAccount:
+      name: test-sa
+    source:
+      sourceType: Catalog
+      catalog:
+        # packageName is missing

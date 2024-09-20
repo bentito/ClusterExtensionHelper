@@ -29,3 +29,11 @@ bin/
 .DS_Store!/.idea/
 .idea/
 ClusterExtensionHelper.iml
+/config/mutatingwebhookconfiguration.yaml
+/ca.crt
+/config/openai-api-key.yaml
+/config/webhook-certs.yaml
+
+/config/certs/tls.crt
+/config/certs/tls.key
+/config/certs/webhook-certs.yaml
