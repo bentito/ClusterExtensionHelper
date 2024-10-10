@@ -44,6 +44,16 @@ export OPENAI_API_KEY=your_actual_openai_api_key
 
 > **Note**: Replace `your_actual_openai_api_key` with your actual OpenAI API key. Keep this key secure and do not share it or commit it to version control.
 
+### 3.1 Alternative: Using Your Own LLM
+
+Alternatively, you can configure the webhook to use your own LLM that supports the completions API by setting the `LOCAL_LLM_URL` environment variable. This setup requires an alternate deployment configuration. Instead of using the default OpenAI deployment configuration (`config/deployment.yaml`), switch to `config/deployment-llm.yaml`.
+
+```bash
+export LOCAL_LLM_URL=http://your-llm-instance/api
+```
+
+This will allow you to process LLM prompts with your own hosted LLM.
+
 ### 4. Build and Deploy the Webhook
 
 Use the provided Makefile to build the Go application, create Docker images, generate necessary certificates and secrets, and deploy the webhook to your Kind cluster.

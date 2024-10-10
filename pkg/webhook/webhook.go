@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,11 @@ type openAIClient struct {
 	client *openai.Client
 }
 
+// localLLMClient is a client for the local LLM.
+type localLLMClient struct {
+	url string
+}
+
 func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
 	chatCompletion, err := c.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -57,6 +63,66 @@ func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) 
 	}
 
 	return chatCompletion.Choices[0].Message.Content, nil
+}
+
+func (c *localLLMClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
+	// Create the request body
+	requestBody := map[string]interface{}{
+		"messages": []map[string]string{
+			{
+				"content": "You are a helpful assistant.",
+				"role":    "system",
+			},
+			{
+				"content": prompt,
+				"role":    "user",
+			},
+		},
+	}
+
+	requestBodyBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	// Create the request
+	req, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewReader(requestBodyBytes))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("non-OK HTTP status: %s, body: %s", resp.Status, string(bodyBytes))
+	}
+
+	// Parse the response
+	var responseBody struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&responseBody)
+	if err != nil {
+		return "", err
+	}
+
+	if len(responseBody.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+
+	return responseBody.Choices[0].Message.Content, nil
 }
 
 // Mutate handles the admission review requests
@@ -87,17 +153,26 @@ func Mutate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize the OpenAI client
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-	if openaiAPIKey == "" {
-		log.Printf("OPENAI_API_KEY environment variable not set")
-		http.Error(w, "OPENAI_API_KEY environment variable not set", http.StatusInternalServerError)
-		return
-	}
-	client := &openAIClient{
-		client: openai.NewClient(
-			option.WithAPIKey(openaiAPIKey),
-		),
+	// Initialize the client based on the presence of LOCAL_LLM_URL
+	var client openaiClientInterface
+	localLLMURL := os.Getenv("LOCAL_LLM_URL")
+	if localLLMURL != "" {
+		client = &localLLMClient{
+			url: localLLMURL,
+		}
+	} else {
+		// Initialize the OpenAI client
+		openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+		if openaiAPIKey == "" {
+			log.Printf("Neither LOCAL_LLM_URL nor OPENAI_API_KEY environment variable is set")
+			http.Error(w, "Neither LOCAL_LLM_URL nor OPENAI_API_KEY environment variable is set", http.StatusInternalServerError)
+			return
+		}
+		client = &openAIClient{
+			client: openai.NewClient(
+				option.WithAPIKey(openaiAPIKey),
+			),
+		}
 	}
 
 	// Process the AdmissionRequest
