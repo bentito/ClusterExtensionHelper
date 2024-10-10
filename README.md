@@ -7,6 +7,10 @@ This project implements a Kubernetes admission webhook that automatically correc
 
 By integrating an LLM, this webhook aims to simplify the management of CRs by automatically fixing common errors, reducing the manual effort required to maintain valid configurations.
 
+## Watch the demo
+
+https://youtu.be/XLyHyTMrcS4
+
 ## Prerequisites
 
 - **Docker**: For building and loading Docker images.
