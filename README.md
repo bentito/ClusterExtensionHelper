@@ -13,7 +13,7 @@ https://youtu.be/XLyHyTMrcS4
 
 ## Prerequisites
 
-- **Docker**: For building and loading Docker images.
+- **Podman (or Docker)**: For building and loading container images.
 - **Kind**: To create a local Kubernetes cluster.
 - **kubectl**: For interacting with your Kubernetes cluster.
 - **OpenAI API Key**: Required to interact with the OpenAI API. (for now, this is the LLM)
@@ -26,7 +26,7 @@ Follow the steps below to build, deploy, and test the admission webhook on a loc
 
 Ensure you have the necessary tools installed:
 
-- Install [Docker](https://docs.docker.com/get-docker/).
+- Install [Podman](https://podman.io/) or [Docker](https://docs.docker.com/get-docker/).
 - Install [Kind](https://kind.sigs.k8s.io/).
 - Install [kubectl](https://kubernetes.io/docs/tasks/tools/).
 
