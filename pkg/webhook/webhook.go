@@ -233,7 +233,7 @@ func mutate(ar *admissionv1.AdmissionReview, client openaiClientInterface) *admi
 		return toAdmissionResponse(err)
 	}
 
-	// Adjust the CR using OpenAI
+	// Adjust the CR using an LLM
 	adjustedCR, err := AdjustCRWithLLM(cr, crd, client)
 	if err != nil {
 		log.Printf("Failed to adjust CR with LLM: %v", err)
