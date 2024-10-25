@@ -78,8 +78,8 @@ deploy-local-llm: build make-cert
 undeploy:
 	@echo "Deleting Kubernetes resources..."
 	-kubectl delete -f $(CONFIG_DIR)/mutatingwebhookconfiguration.yaml
-	-kubectl delete -f $(CONFIG_DIR)/deployment-openai.yaml
-	-kubectl delete -f $(CONFIG_DIR)/deployment-local-llm.yaml
+	-kubectl delete -f $(CONFIG_DIR)/deployment.yaml
+	-kubectl delete -f $(CONFIG_DIR)/deployment-llm.yaml
 	-kubectl delete -f $(CONFIG_DIR)/service.yaml
 	-kubectl delete secret webhook-certs
 	-kubectl delete secret openai-api-key
