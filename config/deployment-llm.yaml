@@ -27,8 +27,9 @@ spec:
               mountPath: /certs
               readOnly: true
           env:
+#            allow for LLM running on host (like with `ollama run`) and webhook running in Kind
             - name: LOCAL_LLM_URL
-              value: "http://34.47.23.99:8001/v1/chat/completions"
+              value: "http://host.docker.internal:8001/v1/chat/completions"
       volumes:
         - name: webhook-certs
           secret:
