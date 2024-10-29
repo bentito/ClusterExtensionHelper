@@ -68,6 +68,7 @@ func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) 
 func (c *localLLMClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
+		"model": "granite-code:8b",
 		"messages": []map[string]string{
 			{
 				"content": "You are a helpful assistant.",
