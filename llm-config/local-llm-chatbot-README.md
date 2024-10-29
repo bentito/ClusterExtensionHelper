@@ -120,5 +120,5 @@ ollama pull granite-code:8b
 ```
 or
 ```bash
-ollama run granite-code:3b-instruct-128k-fp16
+ollama pull granite-code:3b-instruct-128k-fp16
 ```
