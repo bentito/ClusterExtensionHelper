@@ -23,4 +23,4 @@ webhooks:
       caBundle: "${CA_BUNDLE}"
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
-    timeoutSeconds: 10
+    timeoutSeconds: 30
