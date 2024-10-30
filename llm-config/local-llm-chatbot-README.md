@@ -102,7 +102,7 @@ spec:
         - name: TEXT_GENERATION_API
           value: "openai"
         - name: HF_API_TOKEN
-          value: "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"
+          value: "<snip>"
       ports:
         - containerPort: 8001
           hostPort: 8001
@@ -121,4 +121,12 @@ ollama pull granite-code:8b
 or
 ```bash
 ollama pull granite-code:3b-instruct-128k-fp16
+ollama show granite-code:3b-instruct-128k-fp16  --modelfile > granite-code:3b-instruct-128k-f
+p16.modelfile
+vi granite-code:3b-instruct-128k-fp16.modelfile
 ```
+add `PARAMETER num_ctx 16384`
+```bash
+eollama create -f granite-code:3b-instruct-128k-fp16.modelfile granite-code:3b-instruct-128k-fp16
+```
+which overwrites the model being served with one with actual expanded context window
