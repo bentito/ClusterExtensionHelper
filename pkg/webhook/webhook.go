@@ -68,7 +68,7 @@ func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) 
 func (c *localLLMClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"model": "granite-code:8b",
+		"model": "granite-code:3b-instruct-128k-fp16",
 		"messages": []map[string]string{
 			{
 				"content": "You are a helpful assistant.",
@@ -290,7 +290,7 @@ func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomR
 	}
 	log.Printf("CRD YAML:\n%s\n", string(crdYAML))
 
-	// Construct the prompt to send to OpenAI
+	// Construct the prompt to send to OpenAI/LLM
 	prompt := fmt.Sprintf(`You are an expert in Kubernetes custom resources. Given the following Custom Resource Definition (CRD):
 
 ---
@@ -305,30 +305,46 @@ And the following Custom Resource (CR) that may not conform to the CRD:
 
 Please adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
 
-	log.Printf("Generated OpenAI prompt:\n%s\n", prompt)
+	log.Printf("Generated OpenAI/LLM prompt:\n%s\n", prompt)
 
-	// Call the OpenAI client
+	// Call the OpenAI or LLM client
 	adjustedCRYAML, err := client.CreateChatCompletion(context.TODO(), prompt)
 	if err != nil {
-		log.Printf("Error from OpenAI API: %v", err)
+		log.Printf("Error from OpenAI/LLM API: %v", err)
 		return nil, err
 	}
-	log.Printf("Raw Adjusted CR YAML from OpenAI:\n%s\n", adjustedCRYAML)
+	log.Printf("Raw Adjusted CR YAML from OpenAI/LLM:\n%s\n", adjustedCRYAML)
 
-	// Strip the ```yaml wrapper if present
-	adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
-	if strings.HasPrefix(adjustedCRYAML, "```yaml") && strings.HasSuffix(adjustedCRYAML, "```") {
-		adjustedCRYAML = strings.TrimPrefix(adjustedCRYAML, "```yaml")
-		adjustedCRYAML = strings.TrimSuffix(adjustedCRYAML, "```")
-		adjustedCRYAML = strings.TrimSpace(adjustedCRYAML) // Remove any extra whitespace
+	// Verify if response contains valid YAML by checking for essential keywords
+	if !strings.Contains(adjustedCRYAML, "apiVersion:") && !strings.Contains(adjustedCRYAML, "kind:") {
+		log.Printf("Response does not appear to contain valid YAML. Response:\n%s\n", adjustedCRYAML)
+		return nil, fmt.Errorf("model returned non-YAML content instead of corrected CR")
 	}
-	log.Printf("Adjusted CR YAML after removing wrapper:\n%s\n", adjustedCRYAML)
 
-	// Convert YAML to JSON
+	// Strip any ```yaml wrapper or other unexpected formatting
+	adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
+	if strings.Contains(adjustedCRYAML, "```yaml") {
+		adjustedCRYAML = strings.ReplaceAll(adjustedCRYAML, "```yaml", "")
+		adjustedCRYAML = strings.ReplaceAll(adjustedCRYAML, "```", "")
+		adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
+	}
+
+	// Remove any non-printable characters to sanitize the YAML
+	adjustedCRYAML = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || (r >= ' ' && r <= '~') {
+			return r
+		}
+		return -1
+	}, adjustedCRYAML)
+
+	log.Printf("Adjusted CR YAML after cleaning:\n%s\n", adjustedCRYAML)
+
+	// Attempt to convert YAML to JSON
+	log.Printf("Attempting to convert adjusted CR YAML to JSON")
 	adjustedCRJSON, err := yaml.YAMLToJSON([]byte(adjustedCRYAML))
 	if err != nil {
 		log.Printf("Failed to convert adjusted CR YAML to JSON: %v", err)
-		log.Printf("Raw adjusted CR YAML:\n%s\n", adjustedCRYAML) // Debug the YAML that failed
+		log.Printf("Raw adjusted CR YAML causing error:\n%s\n", adjustedCRYAML) // Debugging raw YAML on error
 		return nil, fmt.Errorf("failed to convert adjusted CR YAML to JSON: %v", err)
 	}
 	log.Printf("Adjusted CR JSON:\n%s\n", string(adjustedCRJSON))
