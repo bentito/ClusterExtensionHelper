@@ -1,0 +1,54 @@
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterextensions.olm.operatorframework.io
+spec:
+  group: olm.operatorframework.io
+  names:
+    kind: ClusterExtension
+    listKind: ClusterExtensionList
+    plural: clusterextensions
+    singular: clusterextension
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              install:
+                properties:
+                  namespace:
+                    type: string
+                    maxLength: 63
+                    pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                  serviceAccount:
+                    properties:
+                      name:
+                        type: string
+                        maxLength: 253
+                        pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+                    required: ["name"]
+                required: ["namespace", "serviceAccount"]
+              source:
+                properties:
+                  sourceType:
+                    type: string
+                    enum: ["Catalog"]
+                  catalog:
+                    properties:
+                      packageName:
+                        type: string
+                        maxLength: 253
+                        pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+                    required: ["packageName"]
+                required: ["sourceType"]
+            required: ["install", "source"]
