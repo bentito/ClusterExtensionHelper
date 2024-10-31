@@ -68,7 +68,14 @@ func (c *openAIClient) CreateChatCompletion(ctx context.Context, prompt string) 
 func (c *localLLMClient) CreateChatCompletion(ctx context.Context, prompt string) (string, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"model": "granite-code:3b-instruct-128k-fp16",
+		//"model": "granite-code:3b-instruct-128k-fp16",
+		//"model": "granite-code:8b-instruct-128k-q4_1",
+		//"model": "granite3-moe:3b",
+		//"model": "granite3-dense:8b",
+		//"model": "eas/codellama:13b-16k",
+		//"model": "llama2:13b-chat",
+		"model": "mistral-nemo",
+
 		"messages": []map[string]string{
 			{
 				"content": "You are a helpful assistant.",
@@ -315,18 +322,14 @@ Please adjust the CR so that it conforms to the CRD schema. Return only the corr
 	}
 	log.Printf("Raw Adjusted CR YAML from OpenAI/LLM:\n%s\n", adjustedCRYAML)
 
+	// Extract YAML content from the LLM response
+	adjustedCRYAML = extractYAMLContent(adjustedCRYAML)
+	log.Printf("Adjusted CR YAML after extracting YAML content:\n%s\n", adjustedCRYAML)
+
 	// Verify if response contains valid YAML by checking for essential keywords
 	if !strings.Contains(adjustedCRYAML, "apiVersion:") && !strings.Contains(adjustedCRYAML, "kind:") {
 		log.Printf("Response does not appear to contain valid YAML. Response:\n%s\n", adjustedCRYAML)
 		return nil, fmt.Errorf("model returned non-YAML content instead of corrected CR")
-	}
-
-	// Strip any ```yaml wrapper or other unexpected formatting
-	adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
-	if strings.Contains(adjustedCRYAML, "```yaml") {
-		adjustedCRYAML = strings.ReplaceAll(adjustedCRYAML, "```yaml", "")
-		adjustedCRYAML = strings.ReplaceAll(adjustedCRYAML, "```", "")
-		adjustedCRYAML = strings.TrimSpace(adjustedCRYAML)
 	}
 
 	// Remove any non-printable characters to sanitize the YAML
@@ -358,6 +361,28 @@ Please adjust the CR so that it conforms to the CRD schema. Return only the corr
 	}
 
 	return adjustedCR, nil
+}
+
+// Helper function to extract YAML content from the LLM response
+func extractYAMLContent(response string) string {
+	var yamlLines []string
+	lines := strings.Split(response, "\n")
+	inYAMLBlock := false
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		// Start collecting when we find the 'apiVersion' or 'kind' field
+		if strings.HasPrefix(trimmedLine, "apiVersion:") || strings.HasPrefix(trimmedLine, "kind:") {
+			inYAMLBlock = true
+		}
+		// Stop collecting if we reach a note or end of the YAML block
+		if inYAMLBlock {
+			if strings.HasPrefix(trimmedLine, "Note:") || strings.HasPrefix(trimmedLine, "```") {
+				break
+			}
+			yamlLines = append(yamlLines, line)
+		}
+	}
+	return strings.Join(yamlLines, "\n")
 }
 
 func ValidateCR(cr *unstructured.Unstructured) (bool, string) {
