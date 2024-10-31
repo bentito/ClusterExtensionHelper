@@ -7,7 +7,8 @@ spec:
     namespace: test-namespace
     serviceAccount:
       name: test-sa
-    source:
-      sourceType: Catalog
-      catalog:
-        # packageName is missing
+  source:
+    sourceType: Catalog
+    catalog:
+      packageName:
+# packageName is missing

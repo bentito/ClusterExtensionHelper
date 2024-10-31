@@ -282,7 +282,7 @@ spec:
   source:
     sourceType: Catalog
     catalog:
-      # packageName is missing
+      packageName:
 `
 	// Convert CR YAML to JSON
 	crJSON, err := yaml.YAMLToJSON([]byte(crYAML))
