@@ -121,12 +121,11 @@ ollama pull granite-code:8b
 or
 ```bash
 ollama pull granite-code:3b-instruct-128k-fp16
-ollama show granite-code:3b-instruct-128k-fp16  --modelfile > granite-code:3b-instruct-128k-f
-p16.modelfile
+ollama show granite-code:3b-instruct-128k-fp16  --modelfile > granite-code:3b-instruct-128k-fp16.modelfile
 vi granite-code:3b-instruct-128k-fp16.modelfile
 ```
 add `PARAMETER num_ctx 16384`
 ```bash
-eollama create -f granite-code:3b-instruct-128k-fp16.modelfile granite-code:3b-instruct-128k-fp16
+ollama create -f granite-code:3b-instruct-128k-fp16.modelfile granite-code:3b-instruct-128k-fp16
 ```
 which overwrites the model being served with one with actual expanded context window
