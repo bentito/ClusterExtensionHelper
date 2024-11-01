@@ -10,6 +10,7 @@ By integrating an LLM, this webhook aims to simplify the management of CRs by au
 ## Watch the demos
 
 https://youtu.be/XLyHyTMrcS4 (OpenAI succeeds at the task)
+
 https://youtu.be/EEi7GEAK8v0 (An open source LLM succeeds at the task)
 
 ## Prerequisites
