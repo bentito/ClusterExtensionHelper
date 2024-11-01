@@ -298,7 +298,16 @@ func AdjustCRWithLLM(cr *unstructured.Unstructured, crd *apiextensionsv1.CustomR
 	log.Printf("CRD YAML:\n%s\n", string(crdYAML))
 
 	// Construct the prompt to send to OpenAI/LLM
-	prompt := fmt.Sprintf(`You are an expert in Kubernetes custom resources. Given the following Custom Resource Definition (CRD):
+	prompt := fmt.Sprintf(`You are an expert in Kubernetes custom resources.
+
+**Definitions:**
+
+- **Custom Resource Definition (CRD):** A schema that defines the structure and validation rules for a custom resource in Kubernetes.
+- **Custom Resource (CR):** An instance of a custom resource that must conform to the schema defined by a CRD.
+
+**Task:**
+
+Given the following Custom Resource Definition (CRD):
 
 ---
 %s
@@ -310,7 +319,11 @@ And the following Custom Resource (CR) that may not conform to the CRD:
 %s
 ---
 
-Please adjust the CR so that it conforms to the CRD schema. Return only the corrected CR in YAML format. Do not include any explanations or additional text.`, string(crdYAML), string(crYAML))
+Please adjust the CR so that it conforms to the CRD schema.
+
+- Return only the corrected CR in YAML format.
+- Exclude 'annotations', 'managedFields', 'status', and any other unnecessary fields.
+- Do not include any explanations, notes, or additional text.`, string(crdYAML), string(crYAML))
 
 	log.Printf("Generated OpenAI/LLM prompt:\n%s\n", prompt)
 
