@@ -40,6 +40,12 @@
      ```bash
      ollama create -f granite-code:3b-instruct-128k-fp16.modelfile granite-code:3b-instruct-128k-fp16
      ```
+     
+3. **Or with ramalama**
+   ```bash
+   ramalama pull granite3-moe
+   ramalama serve granite3-moe
+   ```
 
 ## Example Usage with Curl
 
