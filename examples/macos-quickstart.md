@@ -61,4 +61,9 @@ To send prompts to the model using curl:
    curl --location 'http://127.0.0.1:8001/v1/chat/completions'    --header 'Content-Type: application/json'    --data @examples/condensed_crd_granite-code-3b-instruct-128k-fp16_prompt_example.json | jq '. | {id, model, created, system_fingerprint, content: (.choices[0].message.content | @text), usage}'
    ```
 
+3. **Request with granite-7b-lab model**:
+    ```bash
+   curl --location 'http://127.0.0.1:8080/v1/chat/completions'    --header 'Content-Type: application/json'    --data @examples/condensed_crd_granite-7b-lab_prompt_example.json | jq '. | {id, model, created, system_fingerprint, content: (.choices[0].message.content | @text), usage}'
+    ```
+
 This setup provides a streamlined way to test prompt engineering locally on macOS using the Ollama model server and curl.

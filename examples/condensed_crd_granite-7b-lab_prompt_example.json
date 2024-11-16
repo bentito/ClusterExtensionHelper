@@ -1,5 +1,5 @@
 {
-  "model": "mistral-nemo",
+  "model": "granite-7b-lab",
   "messages": [
     {
       "role": "system",
