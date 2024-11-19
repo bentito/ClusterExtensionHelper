@@ -129,3 +129,9 @@ add `PARAMETER num_ctx 16384`
 ollama create -f granite-code:3b-instruct-128k-fp16.modelfile granite-code:3b-instruct-128k-fp16
 ```
 which overwrites the model being served with one with actual expanded context window
+
+A very slow what to get latest `granite3-8b-instruct` serving (this is the latest InstructLAB enhanced model): 
+```bash
+podman run --rm -it -p 8080:8080 quay.io/redhat-user-workloads/ilab-community-tenant/granite-3-8b-instruct:97638ed506816841c5ea22e9c153ff8fadf96806-linux-arm64 --serve
+```
+It does work well with our PoC prompt, filling in the `packageName`
